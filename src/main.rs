@@ -10,7 +10,7 @@ const CLEAR: Color = Color::rgb(0.1, 0.1, 0.1);
 pub const RESOLUTION: f32 = 16.0 / 9.0;
 const SNAKE_COLOR: Color = Color::rgb(0.3, 0.9, 0.3);
 const APPLE_COLOR: Color = Color::rgb(0.9, 0.1, 0.1);
-const MOVEMENT_TIMESTEP: f64 = 0.35;
+const MOVEMENT_TIMESTEP: f64 = 0.3;
 
 const CELL_SIZE: f32 = 30.0;
 const GRID_WIDTH: f32 = 20.0;
@@ -28,6 +28,7 @@ enum Direction {
 #[derive(Component)]
 struct Snake {
     curr_direction: Direction,
+    next_direction: Direction,
     length: i32,
     positions: Vec<Vec2>,
 }
@@ -103,6 +104,7 @@ fn spawn_snake(mut commands: Commands) {
         },
         Snake {
             curr_direction: Direction::None,
+            next_direction: Direction::None,
             length: 1,
             positions: vec![Vec2::new(0., 0.)],
         },
@@ -221,29 +223,42 @@ fn snake_movement_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut snake: Qu
     let mut snake = snake.single_mut();
 
     if snake.curr_direction != Direction::Down
-        && (keyboard_input.pressed(KeyCode::KeyW) || keyboard_input.pressed(KeyCode::ArrowUp))
+        && snake.next_direction != Direction::Down
+        && (keyboard_input.just_pressed(KeyCode::KeyW)
+            || keyboard_input.just_pressed(KeyCode::ArrowUp))
     {
-        snake.curr_direction = Direction::Up;
+        snake.next_direction = Direction::Up;
     }
     if snake.curr_direction != Direction::Up
-        && (keyboard_input.pressed(KeyCode::KeyS) || keyboard_input.pressed(KeyCode::ArrowDown))
+        && snake.next_direction != Direction::Up
+        && (keyboard_input.just_pressed(KeyCode::KeyS)
+            || keyboard_input.just_pressed(KeyCode::ArrowDown))
     {
-        snake.curr_direction = Direction::Down;
+        snake.next_direction = Direction::Down;
     }
     if snake.curr_direction != Direction::Right
-        && (keyboard_input.pressed(KeyCode::KeyA) || keyboard_input.pressed(KeyCode::ArrowLeft))
+        && snake.next_direction != Direction::Right
+        && (keyboard_input.just_pressed(KeyCode::KeyA)
+            || keyboard_input.just_pressed(KeyCode::ArrowLeft))
     {
-        snake.curr_direction = Direction::Left;
+        snake.next_direction = Direction::Left;
     }
     if snake.curr_direction != Direction::Left
-        && (keyboard_input.pressed(KeyCode::KeyD) || keyboard_input.pressed(KeyCode::ArrowRight))
+        && snake.next_direction != Direction::Left
+        && (keyboard_input.just_pressed(KeyCode::KeyD)
+            || keyboard_input.just_pressed(KeyCode::ArrowRight))
     {
-        snake.curr_direction = Direction::Right;
+        snake.next_direction = Direction::Right;
     }
 }
 
 fn snake_movement(mut snake: Query<(&mut Transform, &mut Snake), With<Snake>>) {
     let (mut snake_transform, mut snake) = snake.single_mut();
+
+    if snake.next_direction != Direction::None {
+        snake.curr_direction = snake.next_direction;
+        snake.next_direction = Direction::None;
+    }
 
     if snake.curr_direction == Direction::Up {
         snake_transform.translation.y += CELL_SIZE;
