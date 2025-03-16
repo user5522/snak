@@ -56,7 +56,14 @@ fn main() {
             }),
             ..default()
         }))
-        .add_systems(Startup, (spawn_camera, spawn_apple, spawn_snake))
+        .add_systems(
+            Startup,
+            (
+                spawn_camera,
+                |commands: Commands| spawn_apple(commands, None),
+                spawn_snake,
+            ),
+        )
         .add_systems(
             Update,
             (
@@ -102,8 +109,25 @@ fn spawn_snake(mut commands: Commands) {
     ));
 }
 
-fn spawn_apple(mut commands: Commands) {
+fn spawn_apple(mut commands: Commands, snake_positions: Option<&Vec<Vec2>>) {
     let mut rng = rand::thread_rng();
+    let mut new_pos;
+
+    loop {
+        new_pos = Vec2::new(
+            rng.gen_range(-(GRID_WIDTH / 2.) as i32..(GRID_WIDTH / 2.) as i32) as f32,
+            rng.gen_range(-(GRID_HEIGHT / 2.) as i32..(GRID_HEIGHT / 2.) as i32) as f32,
+        );
+
+        if let Some(positions) = snake_positions {
+            if !positions.contains(&new_pos) {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
     commands.spawn((
         SpriteBundle {
             sprite: Sprite {
@@ -112,13 +136,7 @@ fn spawn_apple(mut commands: Commands) {
             },
             transform: Transform {
                 scale: Vec3::new(CELL_SIZE, CELL_SIZE, 1.),
-                translation: Vec3::new(
-                    rng.gen_range(-(GRID_WIDTH / 2.) as i32..(GRID_WIDTH / 2.) as i32) as f32
-                        * CELL_SIZE,
-                    rng.gen_range(-(GRID_HEIGHT / 2.) as i32..(GRID_HEIGHT / 2.) as i32) as f32
-                        * CELL_SIZE,
-                    0.2,
-                ),
+                translation: Vec3::new(new_pos.x * CELL_SIZE, new_pos.y * CELL_SIZE, 0.2),
                 ..default()
             },
             ..default()
@@ -140,7 +158,7 @@ fn snake_eating(
     {
         snake.length += 1;
         commands.entity(apple_entity).despawn();
-        spawn_apple(commands);
+        spawn_apple(commands, Some(&snake.positions));
     }
 }
 
