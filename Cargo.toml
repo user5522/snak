@@ -3,6 +3,9 @@ name = "snak"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+resolver = "2"
+
 [profile.dev]
 opt-level = 1
 
@@ -10,5 +13,5 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
-bevy = { version = "0.7.0", features = ["dynamic"] }
+bevy = "0.13.0"
 rand = "0.8.5"
