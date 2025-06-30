@@ -75,9 +75,12 @@ fn main() {
         .init_state::<GameState>()
         .add_systems(
             Startup,
-            (spawn_camera, spawn_ui, spawn_snake, |commands: Commands| {
-                spawn_apple(commands, None)
-            }),
+            (
+                spawn_camera,
+                spawn_ui,
+                spawn_snake,
+                spawn_apple.after(spawn_snake),
+            ),
         )
         .add_systems(
             Update,
@@ -112,7 +115,7 @@ fn main() {
                 restart_game,
                 spawn_ui,
                 spawn_snake,
-                |commands: Commands| spawn_apple(commands, None),
+                spawn_apple.after(spawn_snake),
             ),
         )
         .run();
@@ -289,7 +292,12 @@ fn spawn_snake(mut commands: Commands) {
     ));
 }
 
-fn spawn_apple(mut commands: Commands, snake_positions: Option<&Vec<Vec2>>) {
+fn spawn_apple(mut commands: Commands, snake: Query<&Snake>) {
+    let snake = snake.single();
+    spawn_apple_helper(&mut commands, &snake.positions);
+}
+
+fn spawn_apple_helper(commands: &mut Commands, snake_positions: &Vec<Vec2>) {
     let mut rng = rand::thread_rng();
     let mut new_pos;
 
@@ -299,11 +307,7 @@ fn spawn_apple(mut commands: Commands, snake_positions: Option<&Vec<Vec2>>) {
             rng.gen_range(-(GRID_HEIGHT / 2.) as i32..(GRID_HEIGHT / 2.) as i32) as f32,
         );
 
-        if let Some(positions) = snake_positions {
-            if !positions.contains(&new_pos) {
-                break;
-            }
-        } else {
+        if !snake_positions.contains(&new_pos) {
             break;
         }
     }
@@ -340,7 +344,7 @@ fn snake_eating(
         snake.length += 1;
         score.value += 1;
         commands.entity(apple_entity).despawn();
-        spawn_apple(commands, Some(&snake.positions));
+        spawn_apple_helper(&mut commands, &snake.positions);
     }
 }
 
