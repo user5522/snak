@@ -42,6 +42,16 @@ struct Apple;
 #[derive(Component)]
 struct ScoreText;
 
+#[derive(Component)]
+struct PauseMenu;
+
+#[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
+enum GameState {
+    #[default]
+    Playing,
+    Paused,
+}
+
 fn main() {
     App::new()
         .insert_resource(Time::<Fixed>::from_seconds(MOVEMENT_TIMESTEP))
@@ -58,6 +68,7 @@ fn main() {
             }),
             ..default()
         }))
+        .init_state::<GameState>()
         .add_systems(
             Startup,
             (spawn_camera, spawn_ui, spawn_snake, |commands: Commands| {
@@ -68,14 +79,20 @@ fn main() {
             Update,
             (
                 make_visible,
-                snake_eating,
+                pause_input,
+                snake_eating.run_if(in_state(GameState::Playing)),
+                snake_movement_input.run_if(in_state(GameState::Playing)),
+                snake_body.run_if(in_state(GameState::Playing)),
+                snake_self_collision_check.run_if(in_state(GameState::Playing)),
                 update_score_text,
-                snake_movement_input,
-                snake_body,
-                snake_self_collision_check,
             ),
         )
-        .add_systems(FixedUpdate, snake_movement)
+        .add_systems(
+            FixedUpdate,
+            snake_movement.run_if(in_state(GameState::Playing)),
+        )
+        .add_systems(OnEnter(GameState::Paused), spawn_pause_menu)
+        .add_systems(OnExit(GameState::Paused), cleanup_pause_menu)
         .run();
 }
 
@@ -85,7 +102,7 @@ fn make_visible(mut window: Query<&mut Window>, frames: Res<FrameCount>) {
     }
 }
 
-fn spawn_ui(mut commands: Commands) {
+fn spawn_ui(mut commands: Commands, score: Res<Score>) {
     commands.spawn((
         TextBundle::from_sections([
             TextSection::new(
@@ -97,16 +114,63 @@ fn spawn_ui(mut commands: Commands) {
                 },
             ),
             TextSection::new(
-                "0",
+                score.value.to_string(),
                 TextStyle {
                     font_size: 25.0,
                     color: Color::WHITE,
                     ..default()
                 },
             ),
-        ]),
+        ])
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            left: Val::Px(10.0),
+            top: Val::Px(10.0),
+            ..default()
+        }),
         ScoreText,
     ));
+}
+
+fn spawn_pause_menu(mut commands: Commands) {
+    commands.spawn((
+        TextBundle::from_section(
+            "PAUSED\nESC to resume",
+            TextStyle {
+                font_size: 30.0,
+                color: Color::WHITE,
+                ..default()
+            },
+        )
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            left: Val::Px(10.0),
+            bottom: Val::Px(10.0),
+            ..default()
+        }),
+        PauseMenu,
+    ));
+}
+
+fn cleanup_pause_menu(mut commands: Commands, query: Query<Entity, With<PauseMenu>>) {
+    for entity in &query {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn pause_input(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    state: Res<State<GameState>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::Escape) {
+        let current_state = state.get();
+        match current_state {
+            GameState::Playing => next_state.set(GameState::Paused),
+            GameState::Paused => next_state.set(GameState::Playing),
+            _ => {}
+        }
+    }
 }
 
 fn update_score_text(score: Res<Score>, mut query: Query<&mut Text, With<ScoreText>>) {
