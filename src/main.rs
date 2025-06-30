@@ -1,4 +1,4 @@
-use bevy::{app::AppExit, core::FrameCount, prelude::*, window::WindowMode};
+use bevy::{core::FrameCount, prelude::*, window::WindowMode};
 use rand::prelude::*;
 const MOVEMENT_TIMESTEP: f64 = 0.3;
 
@@ -45,11 +45,15 @@ struct ScoreText;
 #[derive(Component)]
 struct PauseMenu;
 
+#[derive(Component)]
+struct GameOverMenu;
+
 #[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
 enum GameState {
     #[default]
     Playing,
     Paused,
+    GameOver,
 }
 
 fn main() {
@@ -91,8 +95,26 @@ fn main() {
             FixedUpdate,
             snake_movement.run_if(in_state(GameState::Playing)),
         )
+        .add_systems(
+            Update,
+            game_over_input.run_if(in_state(GameState::GameOver)),
+        )
         .add_systems(OnEnter(GameState::Paused), spawn_pause_menu)
         .add_systems(OnExit(GameState::Paused), cleanup_pause_menu)
+        .add_systems(
+            OnEnter(GameState::GameOver),
+            (spawn_game_over_menu, cleanup_ui, cleanup_game_entities),
+        )
+        .add_systems(
+            OnExit(GameState::GameOver),
+            (
+                cleanup_game_over_menu,
+                restart_game,
+                spawn_ui,
+                spawn_snake,
+                |commands: Commands| spawn_apple(commands, None),
+            ),
+        )
         .run();
 }
 
@@ -132,6 +154,12 @@ fn spawn_ui(mut commands: Commands, score: Res<Score>) {
     ));
 }
 
+fn cleanup_ui(mut commands: Commands, query: Query<Entity, With<ScoreText>>) {
+    for entity in &query {
+        commands.entity(entity).despawn();
+    }
+}
+
 fn spawn_pause_menu(mut commands: Commands) {
     commands.spawn((
         TextBundle::from_section(
@@ -158,6 +186,47 @@ fn cleanup_pause_menu(mut commands: Commands, query: Query<Entity, With<PauseMen
     }
 }
 
+fn spawn_game_over_menu(mut commands: Commands, score: Res<Score>) {
+    commands.spawn((
+        TextBundle::from_section(
+            format!("GAME OVER\nFinal Score: {}\nR to restart", score.value),
+            TextStyle {
+                font_size: 30.0,
+                color: Color::WHITE,
+                ..default()
+            },
+        )
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            left: Val::Px(10.0),
+            top: Val::Px(10.0),
+            ..default()
+        }),
+        GameOverMenu,
+    ));
+}
+
+fn cleanup_game_over_menu(mut commands: Commands, query: Query<Entity, With<GameOverMenu>>) {
+    for entity in &query {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn cleanup_game_entities(
+    mut commands: Commands,
+    snake: Query<Entity, With<Snake>>,
+    body_query: Query<Entity, With<SnakeBody>>,
+    apple_query: Query<Entity, With<Apple>>,
+) {
+    for entity in snake
+        .iter()
+        .chain(body_query.iter())
+        .chain(apple_query.iter())
+    {
+        commands.entity(entity).despawn();
+    }
+}
+
 fn pause_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     state: Res<State<GameState>>,
@@ -171,6 +240,19 @@ fn pause_input(
             _ => {}
         }
     }
+}
+
+fn game_over_input(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::KeyR) {
+        next_state.set(GameState::Playing);
+    }
+}
+
+fn restart_game(mut score: ResMut<Score>) {
+    score.value = 0;
 }
 
 fn update_score_text(score: Res<Score>, mut query: Query<&mut Text, With<ScoreText>>) {
@@ -265,11 +347,11 @@ fn snake_eating(
 fn snake_body(
     snake: Query<&Snake>,
     mut commands: Commands,
-    mut query: Query<Entity, With<SnakeBody>>,
+    mut body_query: Query<Entity, With<SnakeBody>>,
 ) {
     let snake = snake.single();
 
-    for entity in query.iter_mut() {
+    for entity in body_query.iter_mut() {
         commands.entity(entity).despawn();
     }
 
@@ -300,7 +382,10 @@ fn snake_body(
     }
 }
 
-fn snake_self_collision_check(snake: Query<(&Transform, &Snake)>, mut exit: EventWriter<AppExit>) {
+fn snake_self_collision_check(
+    snake: Query<(&Transform, &Snake)>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
     let (snake_transform, snake) = snake.single();
 
     let head_pos = Vec2::new(
@@ -311,7 +396,7 @@ fn snake_self_collision_check(snake: Query<(&Transform, &Snake)>, mut exit: Even
     if snake.positions.len() > 2 {
         for i in 0..snake.positions.len() - 1 {
             if snake.positions[i] == head_pos {
-                exit.send(AppExit::Success);
+                next_state.set(GameState::GameOver);
             }
         }
     }
@@ -352,7 +437,7 @@ fn snake_movement_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut snake: Qu
 
 fn snake_movement(
     mut snake: Query<(&mut Transform, &mut Snake), With<Snake>>,
-    mut exit: EventWriter<AppExit>,
+    mut next_state: ResMut<NextState<GameState>>,
 ) {
     let (mut snake_transform, mut snake) = snake.single_mut();
 
@@ -379,7 +464,7 @@ fn snake_movement(
         || snake_transform.translation.x < -GRID_WIDTH / 2.0 * CELL_SIZE
         || snake_transform.translation.y < -GRID_HEIGHT / 2.0 * CELL_SIZE
     {
-        exit.send(AppExit::Success);
+        next_state.set(GameState::GameOver);
     }
 
     let head_pos = Vec2::new(
