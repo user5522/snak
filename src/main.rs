@@ -11,6 +11,11 @@ const CELL_SIZE: f32 = 30.0;
 const GRID_WIDTH: f32 = 20.0 + 1.;
 const GRID_HEIGHT: f32 = 15.0;
 
+#[derive(Resource, Default)]
+struct Score {
+    value: i32,
+}
+
 #[derive(PartialEq, Copy, Clone)]
 enum Direction {
     Up,
@@ -29,15 +34,19 @@ struct Snake {
 }
 
 #[derive(Component)]
+struct SnakeBody;
+
+#[derive(Component)]
 struct Apple;
 
 #[derive(Component)]
-struct SnakeBody;
+struct ScoreText;
 
 fn main() {
     App::new()
         .insert_resource(Time::<Fixed>::from_seconds(MOVEMENT_TIMESTEP))
         .insert_resource(ClearColor(CLEAR))
+        .insert_resource(Score { value: 0 })
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 resolution: (CELL_SIZE * GRID_WIDTH, CELL_SIZE * GRID_HEIGHT).into(),
@@ -51,17 +60,16 @@ fn main() {
         }))
         .add_systems(
             Startup,
-            (
-                spawn_camera,
-                |commands: Commands| spawn_apple(commands, None),
-                spawn_snake,
-            ),
+            (spawn_camera, spawn_ui, spawn_snake, |commands: Commands| {
+                spawn_apple(commands, None)
+            }),
         )
         .add_systems(
             Update,
             (
                 make_visible,
                 snake_eating,
+                update_score_text,
                 snake_movement_input,
                 snake_body,
                 snake_self_collision_check,
@@ -74,6 +82,38 @@ fn main() {
 fn make_visible(mut window: Query<&mut Window>, frames: Res<FrameCount>) {
     if frames.0 == 3 {
         window.single_mut().visible = true;
+    }
+}
+
+fn spawn_ui(mut commands: Commands) {
+    commands.spawn((
+        TextBundle::from_sections([
+            TextSection::new(
+                "Score: ",
+                TextStyle {
+                    font_size: 25.0,
+                    color: Color::WHITE,
+                    ..default()
+                },
+            ),
+            TextSection::new(
+                "0",
+                TextStyle {
+                    font_size: 25.0,
+                    color: Color::WHITE,
+                    ..default()
+                },
+            ),
+        ]),
+        ScoreText,
+    ));
+}
+
+fn update_score_text(score: Res<Score>, mut query: Query<&mut Text, With<ScoreText>>) {
+    if score.is_changed() {
+        for mut text in &mut query {
+            text.sections[1].value = format!("{}", score.value);
+        }
     }
 }
 
@@ -143,6 +183,7 @@ fn snake_eating(
     mut commands: Commands,
     mut snake: Query<(&Transform, &mut Snake), With<Snake>>,
     mut apple: Query<(Entity, &Transform), (With<Apple>, Without<Snake>)>,
+    mut score: ResMut<Score>,
 ) {
     let (snake_transform, mut snake) = snake.single_mut();
     let (apple_entity, apple_transform) = apple.single_mut();
@@ -151,6 +192,7 @@ fn snake_eating(
         && (snake_transform.translation.y == apple_transform.translation.y)
     {
         snake.length += 1;
+        score.value += 1;
         commands.entity(apple_entity).despawn();
         spawn_apple(commands, Some(&snake.positions));
     }
