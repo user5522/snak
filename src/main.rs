@@ -1,19 +1,14 @@
-use bevy::{
-    core::FrameCount,
-    prelude::*,
-    time::{Fixed, Time},
-};
+use bevy::{app::AppExit, core::FrameCount, prelude::*, window::WindowMode};
 use rand::prelude::*;
-use std::process;
-
-const CLEAR: Color = Color::rgb(0.1, 0.1, 0.1);
-pub const RESOLUTION: f32 = 16.0 / 9.0;
-const SNAKE_COLOR: Color = Color::rgb(0.3, 0.9, 0.3);
-const APPLE_COLOR: Color = Color::rgb(0.9, 0.1, 0.1);
 const MOVEMENT_TIMESTEP: f64 = 0.3;
 
+const CLEAR: Color = Color::srgb(0.1, 0.1, 0.1);
+
+const SNAKE_COLOR: Color = Color::srgb(0.3, 0.9, 0.3);
+const APPLE_COLOR: Color = Color::srgb(0.9, 0.1, 0.1);
+
 const CELL_SIZE: f32 = 30.0;
-const GRID_WIDTH: f32 = 20.0;
+const GRID_WIDTH: f32 = 20.0 + 1.;
 const GRID_HEIGHT: f32 = 15.0;
 
 #[derive(PartialEq, Copy, Clone)]
@@ -45,12 +40,9 @@ fn main() {
         .insert_resource(ClearColor(CLEAR))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                resolution: (CELL_SIZE * (GRID_WIDTH + 1.), CELL_SIZE * GRID_HEIGHT).into(),
+                resolution: (CELL_SIZE * GRID_WIDTH, CELL_SIZE * GRID_HEIGHT).into(),
                 title: "Snak".to_string().into(),
-                enabled_buttons: bevy::window::EnabledButtons {
-                    maximize: false,
-                    ..Default::default()
-                },
+                mode: WindowMode::Windowed,
                 visible: false,
                 resizable: false,
                 ..default()
@@ -70,7 +62,7 @@ fn main() {
             (
                 make_visible,
                 snake_eating,
-                snake_movement_input.before(snake_movement),
+                snake_movement_input,
                 snake_body,
                 snake_self_collision_check,
             ),
@@ -202,7 +194,7 @@ fn snake_body(
     }
 }
 
-fn snake_self_collision_check(snake: Query<(&Transform, &Snake)>) {
+fn snake_self_collision_check(snake: Query<(&Transform, &Snake)>, mut exit: EventWriter<AppExit>) {
     let (snake_transform, snake) = snake.single();
 
     let head_pos = Vec2::new(
@@ -213,7 +205,7 @@ fn snake_self_collision_check(snake: Query<(&Transform, &Snake)>) {
     if snake.positions.len() > 2 {
         for i in 0..snake.positions.len() - 1 {
             if snake.positions[i] == head_pos {
-                process::exit(0x0100);
+                exit.send(AppExit::Success);
             }
         }
     }
@@ -252,7 +244,10 @@ fn snake_movement_input(keyboard_input: Res<ButtonInput<KeyCode>>, mut snake: Qu
     }
 }
 
-fn snake_movement(mut snake: Query<(&mut Transform, &mut Snake), With<Snake>>) {
+fn snake_movement(
+    mut snake: Query<(&mut Transform, &mut Snake), With<Snake>>,
+    mut exit: EventWriter<AppExit>,
+) {
     let (mut snake_transform, mut snake) = snake.single_mut();
 
     if snake.next_direction != Direction::None {
@@ -273,17 +268,12 @@ fn snake_movement(mut snake: Query<(&mut Transform, &mut Snake), With<Snake>>) {
         snake_transform.translation.x += CELL_SIZE;
     }
 
-    if snake_transform.translation.x > GRID_WIDTH / 2.0 * CELL_SIZE {
-        process::exit(0x0100);
-    }
-    if snake_transform.translation.y > GRID_HEIGHT / 2.0 * CELL_SIZE {
-        process::exit(0x0100);
-    }
-    if snake_transform.translation.x < -GRID_WIDTH / 2.0 * CELL_SIZE {
-        process::exit(0x0100);
-    }
-    if snake_transform.translation.y < -GRID_HEIGHT / 2.0 * CELL_SIZE {
-        process::exit(0x0100);
+    if snake_transform.translation.x > GRID_WIDTH / 2.0 * CELL_SIZE
+        || snake_transform.translation.y > GRID_HEIGHT / 2.0 * CELL_SIZE
+        || snake_transform.translation.x < -GRID_WIDTH / 2.0 * CELL_SIZE
+        || snake_transform.translation.y < -GRID_HEIGHT / 2.0 * CELL_SIZE
+    {
+        exit.send(AppExit::Success);
     }
 
     let head_pos = Vec2::new(
